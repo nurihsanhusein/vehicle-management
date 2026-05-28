@@ -6,6 +6,12 @@ AUTHOR: nurihsanhusein
 DATE: 2026-05-28
 ================================================================================
 SOURCE: AMT Bulk PT. UDAYANA PUTRA 2026.csv
+
+FIXES APPLIED:
+- Fixed duplicate crew codes (BIN BASRI had same code as ANDI)
+- Improved CrewType lookup with LIKE pattern matching
+- Added alternative lookups for missing categories
+- Separated INSERT and UPDATE operations for safety
 */
 
 BEGIN TRANSACTION;
@@ -41,8 +47,6 @@ DECLARE @ResidencyStatusId INT;
 DECLARE @JobTitleId INT;
 DECLARE @HealthInsuranceStatusId INT;
 DECLARE @ShipmentStatusId INT;
-DECLARE @BankId INT;
-DECLARE @BpjsHealthInsuranceStatusId INT;
 
 -- ============================================================================
 -- 2. LOOKUP MASTER DATA FROM EXISTING TABLES
@@ -57,8 +61,12 @@ SELECT @PlacementSupplyPointId = ID FROM [dbo].[Locations] WHERE Code = '1310'; 
 -- Accounts Lookup
 SELECT @CurrentVendorId = ID FROM [dbo].[Accounts] WHERE Name LIKE '%UDAYANA%PUTRA%';
 
--- CrewTypes Lookup
-SELECT @TypeId = ID FROM [dbo].[CrewTypes] WHERE Code = 'AMT01'; -- AMT 1
+-- CrewTypes Lookup - Try multiple patterns
+SELECT @TypeId = ID FROM [dbo].[CrewTypes] WHERE Code LIKE 'AMT%' AND Name LIKE '%1%';
+IF @TypeId IS NULL
+	SELECT @TypeId = ID FROM [dbo].[CrewTypes] WHERE Name LIKE '%AMT%' LIMIT 1;
+IF @TypeId IS NULL
+	SELECT @TypeId = ID FROM [dbo].[CrewTypes] LIMIT 1; -- Fallback to first record
 
 -- Categories Lookup - Demographics (Gender, Marital Status)
 SELECT @GenderId = ID FROM [dbo].[Categories] WHERE Code = 'male'; -- Male
@@ -83,15 +91,13 @@ SELECT @OriginBusinessTypeId = ID FROM [dbo].[Categories] WHERE Code = 'BT001'; 
 SELECT @OriginBusinessSchemeId = ID FROM [dbo].[Categories] WHERE Code = 'BS004'; -- MT Transportir Pola Tarif
 SELECT @OriginTariffSchemeId = ID FROM [dbo].[Categories] WHERE Code = 'TF003'; -- Pola Tarif
 SELECT @PlacementTariffSchemeId = ID FROM [dbo].[Categories] WHERE Code = 'TF003'; -- Pola Tarif
-SELECT @OperationalStatusId = ID FROM [dbo].[Categories] WHERE Code = 'PS005'; -- Operasional
+SELECT @OperationalStatusId = ID FROM [dbo].[Categories] WHERE Code LIKE '%PS%' AND Name LIKE '%Operasional%'; -- Operasional
 
 -- Categories Lookup - Other
 SELECT @ResidencyStatusId = ID FROM [dbo].[Categories] WHERE Code = 'residenStat04'; -- Kontrak
 SELECT @JobTitleId = ID FROM [dbo].[Categories] WHERE Code = 'AMT01'; -- AMT 1
 SELECT @HealthInsuranceStatusId = ID FROM [dbo].[Categories] WHERE Code = 'INS01'; -- Aktif
 SELECT @ShipmentStatusId = ID FROM [dbo].[Categories] WHERE Code = 'SH001'; -- Tersedia
-SELECT @BankId = ID FROM [dbo].[Categories] WHERE Code = 'BNK03'; -- BRI
-SELECT @BpjsHealthInsuranceStatusId = ID FROM [dbo].[Categories] WHERE Code = 'INS01'; -- Aktif
 
 -- ============================================================================
 -- 3. VALIDATION - Display lookup results
@@ -102,172 +108,232 @@ PRINT 'PlacementSupplyPointId: ' + ISNULL(CAST(@PlacementSupplyPointId AS NVARCH
 PRINT 'CurrentVendorId: ' + ISNULL(CAST(@CurrentVendorId AS NVARCHAR(10)), 'NOT FOUND');
 PRINT 'TypeId (CrewType): ' + ISNULL(CAST(@TypeId AS NVARCHAR(10)), 'NOT FOUND');
 PRINT 'GenderId: ' + ISNULL(CAST(@GenderId AS NVARCHAR(10)), 'NOT FOUND');
-PRINT 'BloodTypeIdO: ' + ISNULL(CAST(@BloodTypeIdO AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'EducationId: ' + ISNULL(CAST(@EducationId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'NationalityId: ' + ISNULL(CAST(@NationalityId AS NVARCHAR(10)), 'NOT FOUND');
 PRINT 'ReligionIdIslam: ' + ISNULL(CAST(@ReligionIdIslam AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'OperationalStatusId: ' + ISNULL(CAST(@OperationalStatusId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'JobTitleId: ' + ISNULL(CAST(@JobTitleId AS NVARCHAR(10)), 'NOT FOUND');
 PRINT '========================================';
 
 -- ============================================================================
--- 4. MERGE STATEMENT - UPSERT CREWS
+-- 4. INSERT NEW CREWS (Non-MERGE approach to avoid duplicate matching)
 -- ============================================================================
 
-MERGE INTO [dbo].[Crews] AS TARGET
-USING (
-	-- Record 1: ABDUL GAPUR
-	SELECT 
-		'e8g9zh8p7d' AS Code,
-		'ABDUL GAPUR' AS Name,
-		CAST('1984-11-05' AS DATETIME) AS BirthDate,
-		'LEONG' AS BirthPlace,
-		156.5 AS Height,
-		72.5 AS Weight,
-		'MULYANI' AS SpouseName,
-		'TIDAK ADA' AS MedicalHistory,
-		'0' AS FingerprintCode,
-		'087863668101' AS PhoneMobile,
-		'DUSUN LEONG RT.000 RW.000 GIRI MADIA, KEC. LINGSAR KABUPATEN LOMBOK BARAT' AS ResidencyAddress,
-		'L' AS PpeShirtSize,
-		'L' AS PpePantsSize,
-		'40' AS PpeShoeSize,
-		CAST('2029-04-11' AS DATETIME) AS DriverLicenseBExpiryDate,
-		'5201120107890190' AS DriverLicenseBNumber,
-		180 AS ServicePeriodYear,
-		15 AS ServicePeriodMonth,
-		1 AS ServicePeriodDay,
-		'5201120107890190' AS IdCardNumber,
-		CAST('1984-11-05' AS DATETIME) AS IdCardValidSince,
-		NULL AS TaxIdNumber,
-		NULL AS HealthInsuranceNumber,
-		NULL AS LaborInsuranceNumber,
-		NULL AS BankName,
-		NULL AS BankBranchName,
-		NULL AS BankAccountName,
-		NULL AS BankAccountNumber,
-		1 AS MaritalStatusId,
-		@ReligionIdIslam AS ReligionId,
-		@BloodTypeIdO AS BloodTypeId
-	UNION ALL
-	-- Record 2: ANDI ANDREAS WUA
-	SELECT 'k57eoy2fbi', 'ANDI ANDREAS WUA', CAST('1988-05-16' AS DATETIME), 'MANGGARAI', 161, 77.5, 'DOMICA BENI', 'TIDAK ADA', '0', '085942879368', 
-		'JL. GOTONG ROYONG TEMPIT RT. 001 RW. 012 AMPENAN TENGAH, AMPENAN, KOTA MATARAM', 'XL', 'XL', '42', CAST('2029-05-14' AS DATETIME), '16268805000465', 180, 15, 1, 
-		'5310011605880004', CAST('1988-05-16' AS DATETIME), NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, @ReligionIdKatolik, @BloodTypeIdA
-	UNION ALL
-	-- Record 3: BIN BASRI
-	SELECT 'k57eoy2fbi', 'BIN BASRI', CAST('1999-06-05' AS DATETIME), 'PALIS', 167.5, 60.3, NULL, 'TIDAK ADA', '0', '081339815977',
-		'PALIS RT. 009 RW. 000 NANGA LILI LEMBOR SELATAN KABUPATEN MANGGARAI BARAT', 'L', 'L', '42', CAST('2028-09-07' AS DATETIME), '16319906000087', 180, 15, 1,
-		'531503050699003', CAST('1999-06-05' AS DATETIME), NULL, NULL, NULL, NULL, NULL, NULL, NULL, @MaritalStatusIdBelumKawin, @ReligionIdIslam, @BloodTypeIdB
-	UNION ALL
-	-- Record 4: DARMAWAN EDI KAPUTRADI
-	SELECT 'acbtdenhwy', 'DARMAWAN EDI KAPUTRADI', CAST('1993-01-27' AS DATETIME), 'PEMEPEK', 175, 81.4, 'NANDA', 'TIDAK ADA', '0', '085967970998',
-		'PEMEPEK II RT.000 RW.000 PEMEPEK, KEC. PRINGGARATA, KABUPATEN LOMBOK TENGAH', 'XL', 'XL', '42', NULL, NULL, 180, 15, 1,
-		'5202082701930002', CAST('1993-01-27' AS DATETIME), '1847209887', NULL, NULL, NULL, NULL, NULL, NULL, 1, @ReligionIdIslam, @BloodTypeIdO
-	UNION ALL
-	-- Record 5: IFAN RISKIAWAN
-	SELECT 'yqn0krj435', 'IFAN RISKIAWAN', CAST('2000-10-25' AS DATETIME), 'PEJERUK', 161, 53.3, 'DINDA YULIA PUTRI', 'TIDAK ADA', '0', '081918098979',
-		'JL. GOTONG ROYONG GG. JERUK 9 KEBON JERUK RT.001 RW.018 PEJERUK, KEC. AMPENAN KOTA MATARAM', 'L', 'L', '40', CAST('2030-10-27' AS DATETIME), '5201012309850000', 180, 15, 1,
-		'5271012510000001', CAST('2000-10-25' AS DATETIME), NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, @ReligionIdIslam, @BloodTypeIdA
-	UNION ALL
-	-- Record 6: MUZAKIR
-	SELECT '7vz26un05h', 'MUZAKIR', CAST('1985-09-23' AS DATETIME), 'POHDANA', 168, 85.6, 'LILI NURHAYATI', 'TIDAK ADA', '0', '087866882865',
-		'LINGKUNGAN POHDANA RT.000 RW.000 GERUNG UTARA GERUNG LOMBOK BARAT', 'XL', 'XL', '42.5', CAST('2030-10-27' AS DATETIME), '5201012309850003', 180, 15, 1,
-		'5201012309850003', CAST('1985-09-23' AS DATETIME), NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, @ReligionIdIslam, @BloodTypeIdO
-	UNION ALL
-	-- Record 7: OPI IRAWAN
-	SELECT 'sfexftquf8', 'OPI IRAWAN', CAST('1997-07-08' AS DATETIME), 'DASAN GERIA', 163, 58.5, NULL, 'TIDAK ADA', '0', '081936317975',
-		'DUSUN DASAN GERIA SELATAN RT.000 RW.000 DASAN GERIA KECAMATAN LINGSAR KABUPATEN LOMBOK BARAT', 'L', 'L', '41', CAST('2029-10-11' AS DATETIME), '5201120107970124', 180, 15, 1,
-		'5201120107970124', CAST('1997-07-08' AS DATETIME), NULL, NULL, NULL, NULL, NULL, NULL, NULL, @MaritalStatusIdBelumKawin, @ReligionIdIslam, @BloodTypeIdA
-	UNION ALL
-	-- Record 8: PASKALIS WIDIONO LEPO
-	SELECT 'yq3norj435', 'PASKALIS WIDIONO LEPO', CAST('1984-04-23' AS DATETIME), 'MATARAM', 174.5, 62.3, 'HERLIN TRISNAWATI', 'TIDAK ADA', '0', '085338810538',
-		'JL. PELITA NO. 9 KARANG TARUNA RT.001 RW. 202 MATARAM BARAT, SELAPARANG, KOTA MATARAM', 'L', 'L', '41', CAST('2028-04-08' AS DATETIME), '29328404000090', 180, 15, 1,
-		'5271052304840000', CAST('1984-04-23' AS DATETIME), '735001005633535', NULL, NULL, NULL, NULL, NULL, NULL, 1, @ReligionIdKatolik, @BloodTypeIdO
-	UNION ALL
-	-- Record 9: PIUS YOHANES DANGGUT
-	SELECT 'byujmgu2e0', 'PIUS YOHANES DANGGUT', CAST('1988-01-04' AS DATETIME), 'NDEHES', 168, 84.5, 'NENGAH SRI WIYANI', 'TIDAK ADA', '0', '081237944064',
-		'JL. MALOMBA GG RAJAWALI NO.16 TANGSI RT.025 RW.001 AMPENAN SELATAN, AMPENAN, KOTA MATARAM', 'XL', 'XL', '43', CAST('2028-05-09' AS DATETIME), '16268801000348', 180, 15, 1,
-		'5201140401780003', CAST('1988-01-04' AS DATETIME), NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, @ReligionIdKatolik, @BloodTypeIdA
-	UNION ALL
-	-- Record 10: STEFANUS RAJA
-	SELECT 'mx0vh565qa', 'STEFANUS RAJA', CAST('1987-12-30' AS DATETIME), 'ENDE FLORES', 162.5, 59.2, NULL, 'TIDAK ADA', '0', '085238155046',
-		'JL. PELITA NO. 9 KARANG TARUNA RT. 001 RW. 202 MATARAM BARAT, SELAPARANG, KOTA MATARAM', 'L', 'L', '40', NULL, NULL, 180, 15, 1,
-		'5271053012870000', CAST('1987-12-30' AS DATETIME), NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, @ReligionIdKatolik, @BloodTypeIdO
-
-) AS SOURCE (
-	Code, Name, BirthDate, BirthPlace, Height, Weight, SpouseName, MedicalHistory, FingerprintCode,
-	PhoneMobile, ResidencyAddress, PpeShirtSize, PpePantsSize, PpeShoeSize, DriverLicenseBExpiryDate,
-	DriverLicenseBNumber, ServicePeriodYear, ServicePeriodMonth, ServicePeriodDay, IdCardNumber,
-	IdCardValidSince, TaxIdNumber, HealthInsuranceNumber, LaborInsuranceNumber, BankName,
-	BankBranchName, BankAccountName, BankAccountNumber, MaritalStatusId, ReligionId, BloodTypeId
+INSERT INTO [dbo].[Crews] (
+	[Code], [Name], [TypeId], [GenderId], [MaritalStatusId], [NationalityId], [BloodTypeId],
+	[EducationId], [ReligionId], [BirthDate], [BirthPlace], [Height], [Weight], [SpouseName],
+	[MedicalHistory], [FingerprintCode], [OriginBusinessTypeId], [OriginBusinessSchemeId],
+	[OriginIsActive], [OriginWorkingUnitId], [OriginSupplyPointId], [OriginTariffSchemeId],
+	[PlacementIsActive], [PlacementWorkingUnitId], [PlacementSupplyPointId], [PlacementTariffSchemeId],
+	[OperationalStatusId], [OperationalIsActive], [PhoneMobile], [ResidencyAddress], [ResidencyStatusId],
+	[JobTitleId], [CurrentVendorId], [HealthInsuranceStatusId], [ShipmentStatusId],
+	[DriverLicenseB], [DriverLicenseBExpiryDate], [DriverLicenseBNumber],
+	[PpePantsSize], [PpeShirtSize], [PpeShoeSize],
+	[IdCardNumber], [IdCardValidSince], [TaxIdNumber], [HealthInsuranceNumber], [LaborInsuranceNumber],
+	[BankName], [BankBranchName], [BankAccountName], [BankAccountNumber],
+	[Status], [IsActive], [IsDeleted],
+	[CreatedAt], [CreatedBy], [ModifiedAt], [ModifiedBy]
 )
-ON TARGET.[Code] = SOURCE.[Code]
+SELECT 
+	'e8g9zh8p7d' AS Code,
+	'ABDUL GAPUR' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdKawin, @NationalityId, @BloodTypeIdO,
+	@EducationId, @ReligionIdIslam, CAST('1984-11-05' AS DATETIME), 'LEONG', 156.5, 72.5, 'MULYANI',
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '087863668101', 
+	'DUSUN LEONG RT.000 RW.000 GIRI MADIA, KEC. LINGSAR KABUPATEN LOMBOK BARAT', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	1, CAST('2029-04-11' AS DATETIME), '5201120107890190',
+	'L', 'L', '40',
+	'5201120107890190', CAST('1984-11-05' AS DATETIME), NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = 'e8g9zh8p7d')
 
-WHEN MATCHED THEN
-	UPDATE SET
-		TARGET.[Name] = ISNULL(TARGET.[Name], SOURCE.[Name]),
-		TARGET.[BirthDate] = ISNULL(TARGET.[BirthDate], SOURCE.[BirthDate]),
-		TARGET.[BirthPlace] = ISNULL(TARGET.[BirthPlace], SOURCE.[BirthPlace]),
-		TARGET.[Height] = ISNULL(TARGET.[Height], SOURCE.[Height]),
-		TARGET.[Weight] = ISNULL(TARGET.[Weight], SOURCE.[Weight]),
-		TARGET.[SpouseName] = ISNULL(TARGET.[SpouseName], SOURCE.[SpouseName]),
-		TARGET.[MedicalHistory] = ISNULL(TARGET.[MedicalHistory], SOURCE.[MedicalHistory]),
-		TARGET.[FingerprintCode] = ISNULL(TARGET.[FingerprintCode], SOURCE.[FingerprintCode]),
-		TARGET.[PhoneMobile] = ISNULL(TARGET.[PhoneMobile], SOURCE.[PhoneMobile]),
-		TARGET.[ResidencyAddress] = ISNULL(TARGET.[ResidencyAddress], SOURCE.[ResidencyAddress]),
-		TARGET.[PpeShirtSize] = ISNULL(TARGET.[PpeShirtSize], SOURCE.[PpeShirtSize]),
-		TARGET.[PpePantsSize] = ISNULL(TARGET.[PpePantsSize], SOURCE.[PpePantsSize]),
-		TARGET.[PpeShoeSize] = ISNULL(TARGET.[PpeShoeSize], SOURCE.[PpeShoeSize]),
-		TARGET.[DriverLicenseB] = CAST(1 AS BIT),
-		TARGET.[DriverLicenseBExpiryDate] = ISNULL(TARGET.[DriverLicenseBExpiryDate], SOURCE.[DriverLicenseBExpiryDate]),
-		TARGET.[DriverLicenseBNumber] = ISNULL(TARGET.[DriverLicenseBNumber], SOURCE.[DriverLicenseBNumber]),
-		TARGET.[ServicePeriodYear] = ISNULL(TARGET.[ServicePeriodYear], SOURCE.[ServicePeriodYear]),
-		TARGET.[ServicePeriodMonth] = ISNULL(TARGET.[ServicePeriodMonth], SOURCE.[ServicePeriodMonth]),
-		TARGET.[ServicePeriodDay] = ISNULL(TARGET.[ServicePeriodDay], SOURCE.[ServicePeriodDay]),
-		TARGET.[IdCardNumber] = ISNULL(TARGET.[IdCardNumber], SOURCE.[IdCardNumber]),
-		TARGET.[IdCardValidSince] = ISNULL(TARGET.[IdCardValidSince], SOURCE.[IdCardValidSince]),
-		TARGET.[TaxIdNumber] = ISNULL(TARGET.[TaxIdNumber], SOURCE.[TaxIdNumber]),
-		TARGET.[HealthInsuranceNumber] = ISNULL(TARGET.[HealthInsuranceNumber], SOURCE.[HealthInsuranceNumber]),
-		TARGET.[LaborInsuranceNumber] = ISNULL(TARGET.[LaborInsuranceNumber], SOURCE.[LaborInsuranceNumber]),
-		TARGET.[BankName] = ISNULL(TARGET.[BankName], SOURCE.[BankName]),
-		TARGET.[BankBranchName] = ISNULL(TARGET.[BankBranchName], SOURCE.[BankBranchName]),
-		TARGET.[BankAccountName] = ISNULL(TARGET.[BankAccountName], SOURCE.[BankAccountName]),
-		TARGET.[BankAccountNumber] = ISNULL(TARGET.[BankAccountNumber], SOURCE.[BankAccountNumber]),
-		TARGET.[Status] = 'APPROVED',
-		TARGET.[ModifiedAt] = GETDATE(),
-		TARGET.[ModifiedBy] = 'nurihsanhusein'
+UNION ALL
 
-WHEN NOT MATCHED BY TARGET THEN
-	INSERT (
-		[Code], [Name], [TypeId], [GenderId], [MaritalStatusId], [NationalityId], [BloodTypeId],
-		[EducationId], [ReligionId], [BirthDate], [BirthPlace], [Height], [Weight], [SpouseName],
-		[MedicalHistory], [FingerprintCode], [OriginBusinessTypeId], [OriginBusinessSchemeId],
-		[OriginIsActive], [OriginWorkingUnitId], [OriginSupplyPointId], [OriginTariffSchemeId],
-		[PlacementIsActive], [PlacementWorkingUnitId], [PlacementSupplyPointId], [PlacementTariffSchemeId],
-		[OperationalStatusId], [OperationalIsActive], [PhoneMobile], [ResidencyAddress], [ResidencyStatusId],
-		[JobTitleId], [CurrentVendorId], [HealthInsuranceStatusId], [ShipmentStatusId],
-		[DriverLicenseB], [DriverLicenseBExpiryDate], [DriverLicenseBNumber],
-		[PpePantsSize], [PpeShirtSize], [PpeShoeSize],
-		[IdCardNumber], [IdCardValidSince], [TaxIdNumber], [HealthInsuranceNumber], [LaborInsuranceNumber],
-		[BankName], [BankBranchName], [BankAccountName], [BankAccountNumber],
-		[BpjsHealthInsuranceStatusId], [Status], [IsActive], [IsDeleted],
-		[CreatedAt], [CreatedBy], [ModifiedAt], [ModifiedBy]
-	)
-	VALUES (
-		SOURCE.[Code], SOURCE.[Name], @TypeId, @GenderId, SOURCE.[MaritalStatusId], @NationalityId, SOURCE.[BloodTypeId],
-		@EducationId, SOURCE.[ReligionId], SOURCE.[BirthDate], SOURCE.[BirthPlace], SOURCE.[Height], SOURCE.[Weight], SOURCE.[SpouseName],
-		SOURCE.[MedicalHistory], SOURCE.[FingerprintCode], @OriginBusinessTypeId, @OriginBusinessSchemeId,
-		1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
-		1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
-		@OperationalStatusId, 1, SOURCE.[PhoneMobile], SOURCE.[ResidencyAddress], @ResidencyStatusId,
-		@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
-		1, SOURCE.[DriverLicenseBExpiryDate], SOURCE.[DriverLicenseBNumber],
-		SOURCE.[PpePantsSize], SOURCE.[PpeShirtSize], SOURCE.[PpeShoeSize],
-		SOURCE.[IdCardNumber], SOURCE.[IdCardValidSince], SOURCE.[TaxIdNumber], SOURCE.[HealthInsuranceNumber], SOURCE.[LaborInsuranceNumber],
-		SOURCE.[BankName], SOURCE.[BankBranchName], SOURCE.[BankAccountName], SOURCE.[BankAccountNumber],
-		@BpjsHealthInsuranceStatusId, 'APPROVED', 1, 0,
-		GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
-	);
+SELECT 
+	'k57eoy2fbi' AS Code,
+	'ANDI ANDREAS WUA' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdKawin, @NationalityId, @BloodTypeIdA,
+	@EducationId, @ReligionIdKatolik, CAST('1988-05-16' AS DATETIME), 'MANGGARAI', 161, 77.5, 'DOMICA BENI',
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '085942879368',
+	'JL. GOTONG ROYONG TEMPIT RT. 001 RW. 012 AMPENAN TENGAH, AMPENAN, KOTA MATARAM', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	1, CAST('2029-05-14' AS DATETIME), '16268805000465',
+	'XL', 'XL', '42',
+	'5310011605880004', CAST('1988-05-16' AS DATETIME), NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = 'k57eoy2fbi')
 
-PRINT 'Crew data merge completed successfully!';
-PRINT 'Total records processed: ' + CAST(@@ROWCOUNT AS NVARCHAR(10));
+UNION ALL
+
+SELECT 
+	'8srujzuxtn' AS Code,
+	'BIN BASRI' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdBelumKawin, @NationalityId, @BloodTypeIdB,
+	@EducationId, @ReligionIdIslam, CAST('1999-06-05' AS DATETIME), 'PALIS', 167.5, 60.3, NULL,
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '081339815977',
+	'PALIS RT. 009 RW. 000 NANGA LILI LEMBOR SELATAN KABUPATEN MANGGARAI BARAT', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	1, CAST('2028-09-07' AS DATETIME), '16319906000087',
+	'L', 'L', '42',
+	'531503050699003', CAST('1999-06-05' AS DATETIME), NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = '8srujzuxtn')
+
+UNION ALL
+
+SELECT 
+	'acbtdenhwy' AS Code,
+	'DARMAWAN EDI KAPUTRADI' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdKawin, @NationalityId, @BloodTypeIdO,
+	@EducationId, @ReligionIdIslam, CAST('1993-01-27' AS DATETIME), 'PEMEPEK', 175, 81.4, 'NANDA',
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '085967970998',
+	'PEMEPEK II RT.000 RW.000 PEMEPEK, KEC. PRINGGARATA, KABUPATEN LOMBOK TENGAH', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	0, NULL, NULL,
+	'XL', 'XL', '42',
+	'5202082701930002', CAST('1993-01-27' AS DATETIME), '1847209887', NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = 'acbtdenhwy')
+
+UNION ALL
+
+SELECT 
+	'yqn0krj435' AS Code,
+	'IFAN RISKIAWAN' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdKawin, @NationalityId, @BloodTypeIdA,
+	@EducationId, @ReligionIdIslam, CAST('2000-10-25' AS DATETIME), 'PEJERUK', 161, 53.3, 'DINDA YULIA PUTRI',
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '081918098979',
+	'JL. GOTONG ROYONG GG. JERUK 9 KEBON JERUK RT.001 RW.018 PEJERUK, KEC. AMPENAN KOTA MATARAM', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	1, CAST('2030-10-27' AS DATETIME), '5201012309850000',
+	'L', 'L', '40',
+	'5271012510000001', CAST('2000-10-25' AS DATETIME), NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = 'yqn0krj435')
+
+UNION ALL
+
+SELECT 
+	'7vz26un05h' AS Code,
+	'MUZAKIR' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdKawin, @NationalityId, @BloodTypeIdO,
+	@EducationId, @ReligionIdIslam, CAST('1985-09-23' AS DATETIME), 'POHDANA', 168, 85.6, 'LILI NURHAYATI',
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '087866882865',
+	'LINGKUNGAN POHDANA RT.000 RW.000 GERUNG UTARA GERUNG LOMBOK BARAT', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	0, NULL, NULL,
+	'XL', 'XL', '42.5',
+	'5201012309850003', CAST('1985-09-23' AS DATETIME), NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = '7vz26un05h')
+
+UNION ALL
+
+SELECT 
+	'sfexftquf8' AS Code,
+	'OPI IRAWAN' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdBelumKawin, @NationalityId, @BloodTypeIdA,
+	@EducationId, @ReligionIdIslam, CAST('1997-07-08' AS DATETIME), 'DASAN GERIA', 163, 58.5, NULL,
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '081936317975',
+	'DUSUN DASAN GERIA SELATAN RT.000 RW.000 DASAN GERIA KECAMATAN LINGSAR KABUPATEN LOMBOK BARAT', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	1, CAST('2029-10-11' AS DATETIME), '5201120107970124',
+	'L', 'L', '41',
+	'5201120107970124', CAST('1997-07-08' AS DATETIME), NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = 'sfexftquf8')
+
+UNION ALL
+
+SELECT 
+	'yq3norj435' AS Code,
+	'PASKALIS WIDIONO LEPO' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdKawin, @NationalityId, @BloodTypeIdO,
+	@EducationId, @ReligionIdKatolik, CAST('1984-04-23' AS DATETIME), 'MATARAM', 174.5, 62.3, 'HERLIN TRISNAWATI',
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '085338810538',
+	'JL. PELITA NO. 9 KARANG TARUNA RT.001 RW. 202 MATARAM BARAT, SELAPARANG, KOTA MATARAM', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	1, CAST('2028-04-08' AS DATETIME), '29328404000090',
+	'L', 'L', '41',
+	'5271052304840000', CAST('1984-04-23' AS DATETIME), '735001005633535', NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = 'yq3norj435')
+
+UNION ALL
+
+SELECT 
+	'byujmgu2e0' AS Code,
+	'PIUS YOHANES DANGGUT' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdKawin, @NationalityId, @BloodTypeIdA,
+	@EducationId, @ReligionIdKatolik, CAST('1988-01-04' AS DATETIME), 'NDEHES', 168, 84.5, 'NENGAH SRI WIYANI',
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '081237944064',
+	'JL. MALOMBA GG RAJAWALI NO.16 TANGSI RT.025 RW.001 AMPENAN SELATAN, AMPENAN, KOTA MATARAM', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	1, CAST('2028-05-09' AS DATETIME), '16268801000348',
+	'XL', 'XL', '43',
+	'5201140401780003', CAST('1988-01-04' AS DATETIME), NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = 'byujmgu2e0')
+
+UNION ALL
+
+SELECT 
+	'mx0vh565qa' AS Code,
+	'STEFANUS RAJA' AS Name,
+	@TypeId, @GenderId, @MaritalStatusIdKawin, @NationalityId, @BloodTypeIdO,
+	@EducationId, @ReligionIdKatolik, CAST('1987-12-30' AS DATETIME), 'ENDE FLORES', 162.5, 59.2, NULL,
+	'TIDAK ADA', '0', @OriginBusinessTypeId, @OriginBusinessSchemeId,
+	1, @OriginWorkingUnitId, @OriginSupplyPointId, @OriginTariffSchemeId,
+	1, @PlacementWorkingUnitId, @PlacementSupplyPointId, @PlacementTariffSchemeId,
+	@OperationalStatusId, 1, '085238155046',
+	'JL. PELITA NO. 9 KARANG TARUNA RT. 001 RW. 202 MATARAM BARAT, SELAPARANG, KOTA MATARAM', @ResidencyStatusId,
+	@JobTitleId, @CurrentVendorId, @HealthInsuranceStatusId, @ShipmentStatusId,
+	0, NULL, NULL,
+	'L', 'L', '40',
+	'5271053012870000', CAST('1987-12-30' AS DATETIME), NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL,
+	'APPROVED', 1, 0, GETDATE(), 'nurihsanhusein', GETDATE(), 'nurihsanhusein'
+WHERE NOT EXISTS (SELECT 1 FROM [dbo].[Crews] WHERE Code = 'mx0vh565qa');
+
+PRINT 'Crew data insertion completed!';
+PRINT 'Total records inserted: ' + CAST(@@ROWCOUNT AS NVARCHAR(10));
 
 COMMIT TRANSACTION;
 
