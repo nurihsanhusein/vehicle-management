@@ -47,10 +47,10 @@ SELECT @OriginSupplyPointId = ID FROM [dbo].[Locations] WHERE Code = '1310'; -- 
 SELECT @OperationalWorkingUnitId = ID FROM [dbo].[Locations] WHERE Code = 'MOR05'; -- JATIMBALINUS
 SELECT @OperationalSupplyPointId = ID FROM [dbo].[Locations] WHERE Code = '1310'; -- IT AMPENAN
 
--- Accounts Lookup
-SELECT @OwnerId = ID FROM [dbo].[Accounts] WHERE Name = 'PT. UDAYANA PUTRA';
-SELECT @VendorId = ID FROM [dbo].[Accounts] WHERE Name = 'PT. REMAJA PRIMA';
-SELECT @PrincipalId = ID FROM [dbo].[Accounts] WHERE Name = 'PT. UDAYANA PUTRA';
+-- Accounts Lookup with LIKE for flexible matching
+SELECT @OwnerId = ID FROM [dbo].[Accounts] WHERE Name LIKE '%UDAYANA%PUTRA%';
+SELECT @VendorId = ID FROM [dbo].[Accounts] WHERE Name LIKE '%REMAJA%PRIMA%';
+SELECT @PrincipalId = ID FROM [dbo].[Accounts] WHERE Name LIKE '%UDAYANA%PUTRA%';
 
 -- Categories Lookup
 SELECT @GradeId = ID FROM [dbo].[Categories] WHERE Code = 'VG001'; -- GRADE ATAS
@@ -62,16 +62,32 @@ SELECT @AxleConfigurationId = ID FROM [dbo].[Categories] WHERE Code = 'AXC01'; -
 SELECT @OperationalTypeId = ID FROM [dbo].[Categories] WHERE Code = 'PT001'; -- MT Reguler
 SELECT @TariffSchemeId = ID FROM [dbo].[Categories] WHERE Code = 'TF003'; -- Pola Tarif
 SELECT @TireClassId = ID FROM [dbo].[Categories] WHERE Code = 'TC003'; -- Heavy Truck Tyres
-SELECT @BodyWorkId = ID FROM [dbo].[Categories] WHERE Name = 'PT. REMAJA PRIMA' AND Type = 'BodyWork';
+SELECT @BodyWorkId = ID FROM [dbo].[Categories] WHERE Name LIKE '%REMAJA%PRIMA%';
 SELECT @TankCapacityId = ID FROM [dbo].[Categories] WHERE Code = 'TNC10'; -- 10 KL
 SELECT @MainTankMeasureId = ID FROM [dbo].[Categories] WHERE Code = 'KL'; -- KL (KILOMETER)
 
--- VehicleTypes Lookup
-SELECT @TypeIdEngkel = ID FROM [dbo].[VehicleTypes] WHERE Name LIKE '%HINO%ENGKEL%';
-SELECT @TypeIdTronton = ID FROM [dbo].[VehicleTypes] WHERE Name LIKE '%HINO%TRONTON%';
+-- VehicleTypes Lookup - Use exact Code/Name matching
+SELECT @TypeIdEngkel = ID FROM [dbo].[VehicleTypes] WHERE Code = 'VT006'; -- Engkel (ID = 6)
+SELECT @TypeIdTronton = ID FROM [dbo].[VehicleTypes] WHERE Code = 'VT005'; -- Tronton (ID = 5)
 
 -- ============================================================================
--- 3. MERGE STATEMENT - UPSERT VEHICLES
+-- 3. VALIDATION - Display lookup results
+-- ============================================================================
+PRINT '========== LOOKUP RESULTS ==========';
+PRINT 'OriginWorkingUnitId: ' + ISNULL(CAST(@OriginWorkingUnitId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'OriginSupplyPointId: ' + ISNULL(CAST(@OriginSupplyPointId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'OwnerId: ' + ISNULL(CAST(@OwnerId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'VendorId: ' + ISNULL(CAST(@VendorId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'GradeId: ' + ISNULL(CAST(@GradeId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'CategoryId: ' + ISNULL(CAST(@CategoryId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'BusinessTypeId: ' + ISNULL(CAST(@BusinessTypeId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'BodyWorkId: ' + ISNULL(CAST(@BodyWorkId AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'TypeIdEngkel (VT006): ' + ISNULL(CAST(@TypeIdEngkel AS NVARCHAR(10)), 'NOT FOUND');
+PRINT 'TypeIdTronton (VT005): ' + ISNULL(CAST(@TypeIdTronton AS NVARCHAR(10)), 'NOT FOUND');
+PRINT '====================================';
+
+-- ============================================================================
+-- 4. MERGE STATEMENT - UPSERT VEHICLES
 -- ============================================================================
 
 MERGE INTO [dbo].[Vehicles] AS TARGET
@@ -262,7 +278,7 @@ BEGIN CATCH
 END CATCH;
 
 -- ============================================================================
--- 4. VALIDATION QUERIES (Run after merge to verify data)
+-- 5. VALIDATION QUERIES (Run after merge to verify data)
 -- ============================================================================
 
 /*
@@ -295,7 +311,8 @@ SELECT
 	L_Origin.[Name] AS OriginLocation,
 	L_Operational.[Name] AS OperationalLocation,
 	C_Grade.[Name] AS Grade,
-	C_Category.[Name] AS Category
+	C_Category.[Name] AS Category,
+	VT.[Name] AS VehicleType
 FROM [dbo].[Vehicles] V
 LEFT JOIN [dbo].[Accounts] A_Owner ON V.[OwnerId] = A_Owner.[Id]
 LEFT JOIN [dbo].[Accounts] A_Vendor ON V.[VendorId] = A_Vendor.[Id]
@@ -303,6 +320,7 @@ LEFT JOIN [dbo].[Locations] L_Origin ON V.[OriginSupplyPointId] = L_Origin.[Id]
 LEFT JOIN [dbo].[Locations] L_Operational ON V.[OperationalSupplyPointId] = L_Operational.[Id]
 LEFT JOIN [dbo].[Categories] C_Grade ON V.[GradeId] = C_Grade.[Id]
 LEFT JOIN [dbo].[Categories] C_Category ON V.[CategoryId] = C_Category.[Id]
+LEFT JOIN [dbo].[VehicleTypes] VT ON V.[TypeId] = VT.[Id]
 WHERE V.[CreatedBy] = 'nurihsanhusein'
 ORDER BY V.[CreatedAt] DESC;
 */
