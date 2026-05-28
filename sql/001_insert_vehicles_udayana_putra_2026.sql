@@ -133,24 +133,24 @@ ON TARGET.[LicensePlate] = SOURCE.[LicensePlate]
 
 WHEN MATCHED THEN
 	UPDATE SET
-		[Name] = ISNULL([Name], SOURCE.[Code]),
-		[BrandName] = ISNULL([BrandName], SOURCE.[BrandName]),
-		[EngineSerialNumber] = ISNULL([EngineSerialNumber], SOURCE.[EngineSerialNumber]),
-		[ChassisSerialNumber] = ISNULL([ChassisSerialNumber], SOURCE.[ChassisSerialNumber]),
-		[ManufactureDate] = ISNULL([ManufactureDate], SOURCE.[ManufactureDate]),
-		[VehicleAge] = ISNULL([VehicleAge], SOURCE.[VehicleAge]),
-		[OwnUseRatio] = ISNULL([OwnUseRatio], CAST(SOURCE.[OwnUseRatio] AS NVARCHAR(100))),
-		[FuelTankCapacity] = ISNULL([FuelTankCapacity], SOURCE.[FuelTankCapacity]),
-		[OilTankCapacity] = ISNULL([OilTankCapacity], SOURCE.[OilTankCapacity]),
-		[MainTankCapacity] = ISNULL([MainTankCapacity], SOURCE.[MainTankCapacity]),
-		[MainTankCompartmentCount] = ISNULL([MainTankCompartmentCount], SOURCE.[MainTankCompartmentCount]),
-		[SealCapCount] = ISNULL([SealCapCount], SOURCE.[SealCapCount]),
-		[SpareTireCount] = ISNULL([SpareTireCount], SOURCE.[SpareTireCount]),
-		[HeadTruckChange] = ISNULL([HeadTruckChange], SOURCE.[HeadTruckChange]),
-		[CompensatorFifthWheel] = ISNULL([CompensatorFifthWheel], SOURCE.[CompensatorFifthWheel]),
-		[Status] = 'APPROVED',
-		[ModifiedAt] = GETDATE(),
-		[ModifiedBy] = 'nurihsanhusein'
+		TARGET.[Name] = ISNULL(TARGET.[Name], SOURCE.[Code]),
+		TARGET.[BrandName] = ISNULL(TARGET.[BrandName], SOURCE.[BrandName]),
+		TARGET.[EngineSerialNumber] = ISNULL(TARGET.[EngineSerialNumber], SOURCE.[EngineSerialNumber]),
+		TARGET.[ChassisSerialNumber] = ISNULL(TARGET.[ChassisSerialNumber], SOURCE.[ChassisSerialNumber]),
+		TARGET.[ManufactureDate] = ISNULL(TARGET.[ManufactureDate], SOURCE.[ManufactureDate]),
+		TARGET.[VehicleAge] = ISNULL(TARGET.[VehicleAge], SOURCE.[VehicleAge]),
+		TARGET.[OwnUseRatio] = ISNULL(TARGET.[OwnUseRatio], CAST(SOURCE.[OwnUseRatio] AS NVARCHAR(100))),
+		TARGET.[FuelTankCapacity] = ISNULL(TARGET.[FuelTankCapacity], SOURCE.[FuelTankCapacity]),
+		TARGET.[OilTankCapacity] = ISNULL(TARGET.[OilTankCapacity], SOURCE.[OilTankCapacity]),
+		TARGET.[MainTankCapacity] = ISNULL(TARGET.[MainTankCapacity], SOURCE.[MainTankCapacity]),
+		TARGET.[MainTankCompartmentCount] = ISNULL(TARGET.[MainTankCompartmentCount], SOURCE.[MainTankCompartmentCount]),
+		TARGET.[SealCapCount] = ISNULL(TARGET.[SealCapCount], SOURCE.[SealCapCount]),
+		TARGET.[SpareTireCount] = ISNULL(TARGET.[SpareTireCount], SOURCE.[SpareTireCount]),
+		TARGET.[HeadTruckChange] = ISNULL(TARGET.[HeadTruckChange], SOURCE.[HeadTruckChange]),
+		TARGET.[CompensatorFifthWheel] = ISNULL(TARGET.[CompensatorFifthWheel], SOURCE.[CompensatorFifthWheel]),
+		TARGET.[Status] = 'APPROVED',
+		TARGET.[ModifiedAt] = GETDATE(),
+		TARGET.[ModifiedBy] = 'nurihsanhusein'
 
 WHEN NOT MATCHED BY TARGET THEN
 	INSERT (
